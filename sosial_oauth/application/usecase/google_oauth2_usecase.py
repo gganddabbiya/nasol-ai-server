@@ -61,7 +61,9 @@ class GoogleOAuth2UseCase:
         if existing_account:
             # 기존 계정이 있는 경우, 변경된 필드만 업데이트
             self._update_account_if_changed(existing_account, user_profile)
-
+        else:
+            # 새 계정 생성
+            await self._create_new_account(user_profile, sso_id)
 
     @staticmethod
     def _update_account_if_changed(existing_account, user_profile: dict) -> None:
@@ -91,3 +93,17 @@ class GoogleOAuth2UseCase:
             )
             account_usecase.update(update_request)
 
+    @staticmethod
+    async def _create_new_account(user_profile: dict, sso_id: str) -> None:
+        # 새로운 계정을 생성
+        await account_usecase.create_account(
+            oauth_id=sso_id,
+            oauth_type="GOOGLE",
+            nickname="",
+            name=user_profile.get("name") or "",
+            profile_image=user_profile.get("picture") or "",
+            email=user_profile.get("email") or "",
+            phone_number="",
+            active_status="Y",
+            role_id=""
+        )
