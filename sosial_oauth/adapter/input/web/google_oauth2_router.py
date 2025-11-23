@@ -29,9 +29,24 @@ async def logout_to_google(request: Request, session_id: str | None = Cookie(Non
     if not session_id:
         print("[DEBUG] No session_id received. Returning logged_in: False")
         return {"logged_in": False}
+
     exists = redis_client.exists(session_id)
     print("[DEBUG] Redis has session_id?", exists)
+
     if exists:
+        # 1. Redis에서 access_token 가져오기
+        access_token = redis_client.get(session_id)
+
+        # 2. Google 토큰 revoke (비활성화)
+        if access_token:
+            async with httpx.AsyncClient() as client:
+                revoke_response = await client.post(
+                    "https://oauth2.googleapis.com/revoke",
+                    params={"token": access_token}
+                )
+                print("[DEBUG] Google token revoke status:", revoke_response.status_code)
+
+        # 3. 로컬 세션 삭제
         redis_client.delete(session_id)
         print("[DEBUG] Redis session_id deleted:", redis_client.exists(session_id))
 
