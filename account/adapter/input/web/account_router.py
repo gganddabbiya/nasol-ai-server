@@ -12,6 +12,7 @@ def get_account_by_oauth_id(oauth_type: str, oauth_id: str):
     if not account:
         raise HTTPException(status_code=404, detail="Account not found")
     return AccountResponse(
+        session_id=account.session_id,
         oauth_id=account.oauth_id,
         oauth_type=account.oauth_type,
         nickname=account.nickname,

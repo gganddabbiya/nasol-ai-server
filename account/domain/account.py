@@ -1,7 +1,8 @@
 from datetime import datetime
 
 class Account:
-    def __init__(self, oauth_id:str, oauth_type: str, nickname: str, name:str, profile_image:str, email:str, phone_number:str, active_status:str, role_id:str):
+    def __init__(self, session_id: str, oauth_id:str, oauth_type: str, nickname: str, name:str, profile_image:str, email:str, phone_number:str, active_status:str, role_id:str):
+        self.session_id = session_id
         self.oauth_id = oauth_id
         self.oauth_type = oauth_type
         self.nickname = nickname

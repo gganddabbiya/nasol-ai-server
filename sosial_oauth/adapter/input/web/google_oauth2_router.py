@@ -20,7 +20,7 @@ async def redirect_to_google():
     print("[DEBUG] Redirecting to Google:", url)
     return RedirectResponse(url)
 
-@authentication_router.get("/google/logout")
+@authentication_router.post("/logout")
 async def logout_to_google(request: Request, session_id: str | None = Cookie(None)):
     print("[DEBUG] Logout called")
 
@@ -29,8 +29,10 @@ async def logout_to_google(request: Request, session_id: str | None = Cookie(Non
     if not session_id:
         print("[DEBUG] No session_id received. Returning logged_in: False")
         return {"logged_in": False}
+
     exists = redis_client.exists(session_id)
     print("[DEBUG] Redis has session_id?", exists)
+
     if exists:
         redis_client.delete(session_id)
         print("[DEBUG] Redis session_id deleted:", redis_client.exists(session_id))
@@ -39,9 +41,14 @@ async def logout_to_google(request: Request, session_id: str | None = Cookie(Non
 
 @authentication_router.get("/google/redirect")
 async def process_google_redirect(
-        code: str,
-        state: str | None = None
+        code: str | None = None,
+        state: str | None = None,
+        error: str | None = None
 ):
+    # Google OAuth 에러 처리 (access_denied 등)
+    if error:
+        print(f"[DEBUG] Google OAuth error: {error}")
+        return RedirectResponse("http://localhost:3000")
     print("[DEBUG] /google/redirect called")
 
     # session_id 생성
@@ -49,12 +56,17 @@ async def process_google_redirect(
     print("[DEBUG] Generated session_id:", session_id)
 
     # code -> access token
-    access_token = await usecase.login_and_fetch_user(state or "", code)
+    access_token = await usecase.login_and_fetch_user(state or "", code, session_id)
     r = httpx.get("https://oauth2.googleapis.com/tokeninfo", params={"access_token": access_token.access_token})
     print(r.status_code, r.text)
 
     # Redis에 session 저장 (1시간 TTL)
-    redis_client.set(session_id, access_token.access_token, ex=3600)
+    redis_client.set(
+        session_id,
+        "USER_TOKEN",
+        access_token.access_token,
+    )
+    redis_client.expire(session_id, 24 * 60 * 60)
     print("[DEBUG] Session saved in Redis:", redis_client.exists(session_id))
 
     # 브라우저 쿠키 발급

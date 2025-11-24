@@ -2,6 +2,7 @@ from pydantic import BaseModel
 from datetime import datetime
 
 class AccountResponse(BaseModel):
+    session_id: str
     oauth_id: str
     oauth_type: str
     nickname: str

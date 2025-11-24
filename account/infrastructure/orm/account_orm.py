@@ -16,8 +16,9 @@ class YN(PyEnum):
 class AccountORM(Base):
     __tablename__ = "account"
 
-    oauth_id = Column(String(255), primary_key=True, nullable=False)
-    oauth_type = Column(SAEnum(OAuthProvider, native_enum=True), primary_key=True, nullable=False, index=True)
+    session_id = Column(String(255), primary_key=True, nullable=False)
+    oauth_id = Column(String(255), nullable=False)
+    oauth_type = Column(SAEnum(OAuthProvider, native_enum=True), nullable=False, index=True)
 
     nickname = Column(String(255), nullable=True)
     name = Column(String(255), nullable=True)

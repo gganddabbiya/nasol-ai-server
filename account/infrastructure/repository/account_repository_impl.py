@@ -28,6 +28,7 @@ class AccountRepositoryImpl(AccountRepositoryPort):
 
     async def save(self, account: Account) -> Account:
         orm_account = AccountORM(
+            session_id=account.session_id,
             oauth_id=account.oauth_id,
             oauth_type=account.oauth_type,
             nickname=account.nickname,
@@ -52,6 +53,7 @@ class AccountRepositoryImpl(AccountRepositoryPort):
                                                        AccountORM.oauth_id == user_oauth_id).first()
         if orm_account:
             account = Account(
+                session_id=orm_account.session_id,
                 oauth_id=orm_account.oauth_id,
                 oauth_type=orm_account.oauth_type,
                 nickname=orm_account.nickname,
@@ -71,6 +73,7 @@ class AccountRepositoryImpl(AccountRepositoryPort):
         orm_account = self.db.query(AccountORM).filter(AccountORM.oauth_id == oauth_id).first()
         if orm_account:
             account = Account(
+                session_id=orm_account.session_id,
                 oauth_id=orm_account.oauth_id,
                 oauth_type=orm_account.oauth_type,
                 nickname=orm_account.nickname,
