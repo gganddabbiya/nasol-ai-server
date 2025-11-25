@@ -1,3 +1,5 @@
+from typing import Any, Coroutine
+
 from account.adapter.input.web.request.create_account_request import CreateAccountRequest
 from account.application.usecase.account_usecase import AccountUseCase
 from sosial_oauth.adapter.input.web.request.get_access_token_request import GetAccessTokenRequest
@@ -24,7 +26,7 @@ class GoogleOAuth2UseCase:
     def get_authorization_url() -> str:
         return GoogleOAuth2Service.get_authorization_url()
 
-    async def login_and_fetch_user(self, state: str, code: str, session_id: str) -> AccessToken:
+    async def login_and_fetch_user(self, state: str, code: str, session_id: str) -> tuple[AccessToken, str]:
         try:
             # 1. Access token 획득
             access_token = self._fetch_access_token(state, code)
@@ -33,9 +35,9 @@ class GoogleOAuth2UseCase:
             user_profile = self._fetch_user_profile(access_token)
 
             # 3. 계정 생성 또는 업데이트
-            await self._create_or_update_account(user_profile, session_id)
+            session_id = await self._create_or_update_account(user_profile, session_id)
 
-            return access_token
+            return access_token, session_id
         except Exception as e:
             raise Exception(f"Failed to login and fetch user: {str(e)}") from e
 
@@ -50,7 +52,7 @@ class GoogleOAuth2UseCase:
         # 액세스 토큰을 사용하여 사용자 프로필을 조회
         return GoogleOAuth2Service.fetch_user_profile(access_token)
 
-    async def _create_or_update_account(self, user_profile: dict, session_id: str) -> None:
+    async def _create_or_update_account(self, user_profile: dict, session_id: str) -> str:
         # 사용자 프로필 정보를 기반으로 계정을 생성하거나 업데이트
         sso_id = user_profile.get("sub") or user_profile.get("id")
         if not sso_id:
@@ -61,10 +63,12 @@ class GoogleOAuth2UseCase:
         if existing_account:
             # 기존 계정이 있는 경우, 변경된 필드만 업데이트
             self._update_account_if_changed(existing_account, user_profile)
+            session_id = existing_account.session_id
         else:
             # 새 계정 생성
             await self._create_new_account(user_profile, sso_id, session_id)
 
+        return session_id
     @staticmethod
     def _update_account_if_changed(existing_account, user_profile: dict) -> None:
         # 기존 계정의 정보가 변경된 경우에만 업데이트

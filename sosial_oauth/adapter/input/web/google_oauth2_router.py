@@ -10,7 +10,6 @@ from sosial_oauth.infrastructure.service.google_oauth2_service import GoogleOAut
 
 # Singleton 방식으로 변경
 authentication_router = APIRouter()
-service = GoogleOAuth2Service().get_instance()
 usecase = GoogleOAuth2UseCase().get_instance()
 redis_client = get_redis()
 
@@ -37,6 +36,7 @@ async def logout_to_google(request: Request, session_id: str | None = Cookie(Non
         redis_client.delete(session_id)
         print("[DEBUG] Redis session_id deleted:", redis_client.exists(session_id))
 
+    print("[DEBUG] TEST : ", redis_client.exists(session_id))
     return {"logged_out": bool(exists)}
 
 @authentication_router.get("/google/redirect")
@@ -56,7 +56,10 @@ async def process_google_redirect(
     print("[DEBUG] Generated session_id:", session_id)
 
     # code -> access token
-    access_token = await usecase.login_and_fetch_user(state or "", code, session_id)
+    access_token, session_id = await usecase.login_and_fetch_user(state or "", code, session_id)
+
+    print("[[[[DEBUG]]]] ACCESS_TOKEN ", access_token)
+    print(session_id)
     r = httpx.get("https://oauth2.googleapis.com/tokeninfo", params={"access_token": access_token.access_token})
     print(r.status_code, r.text)
 

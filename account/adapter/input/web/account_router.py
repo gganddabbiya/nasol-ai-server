@@ -33,6 +33,8 @@ async def update_account(
     update_req: UpdateAccountRequest,
     session_id: str,
 ):
+
+    print(update_req)
     # 기존 계정 조회 (세션 ID로)
     existing_account = usecase.get_account_by_session_id(session_id)
     if not existing_account:
@@ -78,4 +80,6 @@ def delete_account_by_oauth_id(oauth_type: str, oauth_id: str):
 
 @account_router.get("/me")
 def get_account_by_session_id(session_id: str = Depends(get_current_user)):
+
+    print("[DEBUG] IN ACCOUNT/ME : " , session_id)
     return usecase.get_account_by_session_id(session_id)
