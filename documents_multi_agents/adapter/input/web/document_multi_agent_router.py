@@ -12,7 +12,8 @@ from starlette import status
 from config.crypto import Crypto
 from config.redis_config import get_redis
 from account.adapter.input.web.session_helper import get_current_user
-from account.adapter.input.web.request.insert_income_request import InsertIncomeRequest
+
+from documents_multi_agents.adapter.input.web.request.insert_income_request import InsertDocumentRequest
 
 documents_multi_agents_router = APIRouter(tags=["documents_multi_agents_router"])
 redis_client = get_redis()
@@ -269,6 +270,59 @@ async def analyze_document(session_id: str = Depends(get_current_user)):
     except Exception as e:
         raise HTTPException(500, f"{type(e).__name__}: {str(e)}")
 
+# @documents_multi_agents_router.post("/income")
+# async def insert_income(
+#     request: InsertIncomeRequest,
+#     session_id: str = Depends(get_current_user)
+# ):
+#     # 세션 유지 시간 (24시간)
+#     session_expire_seconds = 24 * 60 * 60  # 86400초
+#
+#     # Redis에 소득 자료를 Hash 형태로 저장
+#     try:
+#         # session_id 없으면 (비 로그인 유저)
+#         # GUEST로 redis에 session 생성
+#         if not session_id:
+#             session_id = str(uuid.uuid4())
+#             redis_client.hset(
+#                 session_id,
+#                 "USER_TOKEN",
+#                 "GUEST"
+#             )
+#             redis_client.expire(session_id, 24 * 60 * 60)
+#
+#         # session_id를 request에 추가
+#         request.session_id = session_id
+#
+#         """
+#         Args:
+#             session_id: 세션 ID (Redis key)
+#             income_data: 소득 항목 딕셔너리 {"급여": "3000000", "상여": "500000", ...}
+#
+#         Returns:
+#             저장된 데이터 정보
+#         """
+#         redis_key = f"income:{session_id}"
+#
+#         # Redis Hash에 데이터 저장 (hset)
+#         # income_data의 각 항목을 field-value로 저장
+#         for field_key, field_value in request.income_data.items():
+#             redis_client.hset(redis_key, field_key, field_value)
+#
+#         # 유효기간 설정 (24시간)
+#         redis_client.expire(redis_key, session_expire_seconds)
+#
+#         # 저장된 데이터 확인
+#         saved_data = redis_client.hgetall(redis_key)
+#
+#         return {
+#             "session_id": session_id,
+#             "saved_fields": list(saved_data.keys()),
+#             "expire_in_seconds": session_expire_seconds
+#         }
+#     except Exception as e:
+#         print(str(e))
+#         raise HTTPException(status_code=500, detail=str(e))
 
 # -----------------------
 # API 엔드포인트
@@ -308,59 +362,52 @@ async def analyze_document(session_id: str = Depends(get_current_user)):
         return answer
     except Exception as e:
         raise HTTPException(500, f"{type(e).__name__}: {str(e)}")
+
 # -----------------------
-# API 엔드포인트
+# API 엔드포인트 - 사용자 입력 폼 데이터
 # -----------------------
-@documents_multi_agents_router.post("/income")
-async def insert_income(
-    request: InsertIncomeRequest,
-    session_id: str = Depends(get_current_user)
+@documents_multi_agents_router.post("/analyze_form")
+async def insert_document(
+        request: InsertDocumentRequest,
+        session_id: str = Depends(get_current_user)
 ):
-    # 세션 유지 시간 (24시간)
-    session_expire_seconds = 24 * 60 * 60  # 86400초
-        
-    # Redis에 소득 자료를 Hash 형태로 저장
+    session_expire_seconds = 24 * 60 * 60
+
     try:
-        # session_id 없으면 (비 로그인 유저) 
-        # GUEST로 redis에 session 생성
+        # 세션 처리
         if not session_id:
             session_id = str(uuid.uuid4())
+            redis_client.hset(session_id, "USER_TOKEN", "GUEST")
+            redis_client.expire(session_id, 24 * 60 * 60)
+
+        # 암호화해서 저장 (analyze와 동일)
+        for field_key, field_value in request.data.items():
             redis_client.hset(
                 session_id,
-                "USER_TOKEN",
-                "GUEST"
+                crypto.enc_data(f"{request.document_type}:{field_key}"),
+                crypto.enc_data(field_value.replace(",", "").strip())
             )
-            redis_client.expire(session_id, 24 * 60 * 60)
-        
-        # session_id를 request에 추가
-        request.session_id = session_id
-        
-        """
-        Args:
-            session_id: 세션 ID (Redis key)
-            income_data: 소득 항목 딕셔너리 {"급여": "3000000", "상여": "500000", ...}
-        
-        Returns:
-            저장된 데이터 정보
-        """
-        redis_key = f"income:{session_id}"
-        
-        # Redis Hash에 데이터 저장 (hset)
-        # income_data의 각 항목을 field-value로 저장
-        for field_key, field_value in request.income_data.items():
-            redis_client.hset(redis_key, field_key, field_value)
-        
-        # 유효기간 설정 (24시간)
-        redis_client.expire(redis_key, session_expire_seconds)
-        
-        # 저장된 데이터 확인
-        saved_data = redis_client.hgetall(redis_key)
-        
+
+        redis_client.expire(session_id, session_expire_seconds)
+
+        # 저장 확인 (복호화해서 필터링)
+        all_data = redis_client.hgetall(session_id)
+        saved_fields = []
+        for k in all_data.keys():
+            try:
+                if k == b"USER_TOKEN":
+                    continue
+                decrypted_key = crypto.dec_data(k)
+                if decrypted_key.startswith(f"{request.document_type}:"):
+                    saved_fields.append(decrypted_key.split(":", 1)[1])
+            except:
+                continue
+
         return {
             "session_id": session_id,
-            "saved_fields": list(saved_data.keys()),
+            "document_type": request.document_type,
+            "saved_fields": saved_fields,
             "expire_in_seconds": session_expire_seconds
         }
     except Exception as e:
-        print(str(e))
-        raise HTTPException(status_code=500, detail=str(e))    
+        raise HTTPException(status_code=500, detail=str(e))
