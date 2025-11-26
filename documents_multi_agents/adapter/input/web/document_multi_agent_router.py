@@ -273,6 +273,44 @@ async def analyze_document(session_id: str = Depends(get_current_user)):
 # -----------------------
 # API 엔드포인트
 # -----------------------
+@documents_multi_agents_router.get("/deduction-expectation")
+async def analyze_document(session_id: str = Depends(get_current_user)):
+    try:
+
+        content = redis_client.hgetall(session_id)
+        pairs = []
+        for k_bytes, v_bytes in content.items():
+            try:
+                if k_bytes == "USER_TOKEN":
+                    continue
+
+                key_plain = crypto.dec_data(k_bytes)
+                val_plain = crypto.dec_data(v_bytes)
+
+                # key_plain은 "type:field" 형태 — 원하는 대로 처리
+                _, field_name = key_plain.split(':', 1)
+                pairs.append(f"{field_name}: {val_plain}")
+
+            except ValueError as e:
+                # 복호화 실패 시 로깅/무시
+                continue
+
+        data_str = ", ".join(pairs)
+
+        answer = await tax_on_document(data_str,
+                                       "주어진 문서 본문을 활용하여 연말정산에서 받을 수 있는 총 공제 예상 금액을 산출해줘. "
+                                       "이 때 내가 받을 수 있는 총 공제 예상 금액을 먼저 산출해서 보여주고, "
+                                       "앞으로 받을 수 있는 추가적인 공제내역이 있다면 해당 항목에 대한 간결한 설명과 함께 알려줘."
+                                       "참고할 사이트는 https://www.nts.go.kr/nts/cm/cntnts/cntntsView.do?mi=6596&cntntsId=7875 국세청 공식 사이트야"
+
+                                       )
+
+        return answer
+    except Exception as e:
+        raise HTTPException(500, f"{type(e).__name__}: {str(e)}")
+# -----------------------
+# API 엔드포인트
+# -----------------------
 @documents_multi_agents_router.post("/income")
 async def insert_income(
     request: InsertIncomeRequest,
