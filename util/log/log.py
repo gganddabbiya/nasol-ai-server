@@ -1,5 +1,9 @@
 import logging
 import os
+import inspect
+import functools
+import time
+
 from datetime import datetime
 
 
@@ -47,3 +51,52 @@ class Log:
 
         cls._logger = logger
         return logger
+
+    import time
+
+    def logging_decorator(self, func):
+        if inspect.iscoroutinefunction(func):  # async 함수 처리
+            @functools.wraps(func)
+            async def async_wrapper(*args, **kwargs):
+                # args에서 session_id 제거 (클래스/메서드 첫 인자 self 제외)
+                filtered_args = tuple(a for a in args if not isinstance(a, str) or a != kwargs.get("session_id"))
+                filtered_kwargs = {k: v for k, v in kwargs.items() if k != "session_id"}
+
+                self.get_logger().info(
+                    f"{func.__name__} called {datetime.now().strftime('%Y%m%d%H%M%S')} "
+                    f"with args={filtered_args}, kwargs={filtered_kwargs}"
+                )
+
+                start_time = time.time()
+                result = await func(*args, **kwargs)
+                elapsed = time.time() - start_time
+
+                self.get_logger().info(
+                    f"{func.__name__} returned at {datetime.now().strftime('%Y%m%d%H%M%S')} "
+                    f"(elapsed {elapsed:.3f}s)"
+                )
+                return result
+
+            return async_wrapper
+        else:
+            @functools.wraps(func)
+            def sync_wrapper(*args, **kwargs):
+                filtered_args = tuple(a for a in args if not isinstance(a, str) or a != kwargs.get("session_id"))
+                filtered_kwargs = {k: v for k, v in kwargs.items() if k != "session_id"}
+
+                self.get_logger().info(
+                    f"{func.__name__} called {datetime.now().strftime('%Y%m%d%H%M%S')} "
+                    f"with args={filtered_args}, kwargs={filtered_kwargs}"
+                )
+
+                start_time = time.time()
+                result = func(*args, **kwargs)
+                elapsed = time.time() - start_time
+
+                self.get_logger().info(
+                    f"{func.__name__} returned at {datetime.now().strftime('%Y%m%d%H%M%S')} "
+                    f"(elapsed {elapsed:.3f}s)"
+                )
+                return result
+
+            return sync_wrapper

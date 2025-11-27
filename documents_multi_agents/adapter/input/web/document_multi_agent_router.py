@@ -13,6 +13,7 @@ from account.adapter.input.web.session_helper import get_current_user
 from documents_multi_agents.adapter.input.web.request.insert_income_request import InsertDocumentRequest
 from util.log.log import Log
 
+log_util = Log()
 logger = Log.get_logger()
 documents_multi_agents_router = APIRouter(tags=["documents_multi_agents_router"])
 redis_client = get_redis()
@@ -56,6 +57,7 @@ async def ask_gpt(prompt: str, max_tokens=500):
 # -----------------------
 # QA 에이전트 (문서 기반)
 # -----------------------
+@log_util.logging_decorator
 async def qa_on_document(document: str, question: str, role: str) -> str:
     prompt = f"""
 다음은 문서 자료이다. 이 문서 내의 정보만 사용하여 질문에 답해라.
@@ -77,6 +79,7 @@ async def qa_on_document(document: str, question: str, role: str) -> str:
 # API 엔드포인트
 # -----------------------
 @documents_multi_agents_router.post("/analyze")
+@log_util.logging_decorator
 async def analyze_document(
         response: Response,
         file: UploadFile,
@@ -184,6 +187,7 @@ async def analyze_document(
 # API 엔드포인트
 # -----------------------
 @documents_multi_agents_router.get("/future-assets")
+@log_util.logging_decorator
 async def analyze_document(session_id: str = Depends(get_current_user)):
     try:
         content = redis_client.hgetall(session_id)
@@ -225,6 +229,7 @@ async def analyze_document(session_id: str = Depends(get_current_user)):
 # API 엔드포인트
 # -----------------------
 @documents_multi_agents_router.get("/tax-credit")
+@log_util.logging_decorator
 async def analyze_document(session_id: str = Depends(get_current_user)):
     try:
         content = redis_client.hgetall(session_id)
@@ -283,6 +288,7 @@ async def analyze_document(session_id: str = Depends(get_current_user)):
 # API 엔드포인트
 # -----------------------
 @documents_multi_agents_router.get("/deduction-expectation")
+@log_util.logging_decorator
 async def analyze_document(session_id: str = Depends(get_current_user)):
     try:
         content = redis_client.hgetall(session_id)
@@ -324,6 +330,7 @@ async def analyze_document(session_id: str = Depends(get_current_user)):
 # API 엔드포인트 - 사용자 입력 폼 데이터
 # -----------------------
 @documents_multi_agents_router.post("/analyze_form")
+@log_util.logging_decorator
 async def insert_document(
         response: Response,
         request: InsertDocumentRequest,
@@ -402,6 +409,7 @@ async def insert_document(
 # 디버그: Redis 데이터 확인
 # -----------------------
 @documents_multi_agents_router.get("/debug/redis-data")
+@log_util.logging_decorator
 async def debug_redis_data(session_id: str = Depends(get_current_user)):
     """Redis에 저장된 원본 데이터 확인 (디버깅용)"""
     try:
@@ -465,6 +473,7 @@ async def debug_redis_data(session_id: str = Depends(get_current_user)):
 # 통합 결과 조회 (소득 + 지출)
 # -----------------------
 @documents_multi_agents_router.get("/result")
+@log_util.logging_decorator
 async def get_combined_result(session_id: str = Depends(get_current_user)):
     """
     Redis에 저장된 소득+지출 데이터를 복호화하고 카테고리별로 분류하여 반환
