@@ -5,9 +5,6 @@ import asyncio
 import io
 import re
 import uuid
-from typing import List, Dict
-
-from starlette import status
 
 from config.crypto import Crypto
 from config.redis_config import get_redis
@@ -39,23 +36,6 @@ def extract_text_from_pdf_clean(file_bytes: bytes) -> str:
 
 
 # -----------------------
-# 텍스트 청킹
-# -----------------------
-def chunk_text(text: str, chunk_size=3500, overlap=300) -> List[str]:
-    paragraphs = [p.strip() for p in text.split("\n") if p.strip()]
-    chunks, cur = [], ""
-    for p in paragraphs:
-        if len(cur) + len(p) <= chunk_size:
-            cur += " " + p
-        else:
-            chunks.append(cur.strip())
-            cur = p
-    if cur:
-        chunks.append(cur.strip())
-    return chunks
-
-
-# -----------------------
 # GPT 호출 래퍼 (기존)
 # -----------------------
 async def ask_gpt(prompt: str, max_tokens=500):
@@ -73,9 +53,10 @@ async def ask_gpt(prompt: str, max_tokens=500):
 # -----------------------
 # QA 에이전트 (문서 기반)
 # -----------------------
-async def qa_on_document(document: str, question: str) -> str:
+async def qa_on_document(document: str, question: str, role: str) -> str:
     prompt = f"""
 다음은 문서 자료이다. 이 문서 내의 정보만 사용하여 질문에 답해라.
+답변 시 존댓말 사용을 유지해라.
 
 요약:
 {document}
@@ -84,53 +65,10 @@ async def qa_on_document(document: str, question: str) -> str:
 {question}
 
 규칙:
-- 추론하지 말고 문서 내에서만 답을 찾아라.
-- 없으면 "문서에 해당 정보 없음"이라고 답해라.
-- 문서 내에 있는 모든 정보를 찾아라.
+{role}
 """
     return (await ask_gpt(prompt, max_tokens=2500)).strip()
 
-
-# -----------------------
-# QA 에이전트 (문서 기반)
-# -----------------------
-async def assets_on_document(document: str, question: str) -> str:
-    prompt = f"""
-다음은 문서 본문이다. 이 문서 내의 정보만 사용하여 질문에 답해라.
-
-본문:
-{document}
-
-질문:
-{question}
-
-규칙:
-- 주어진 문서 본문의 자료를 토대로 한국의 비슷한 소득수준의 재무정보를 분석하여 가이드가 될 수 있는 포토폴리오 자료를 제출하라. 
-- 웹 검색을 사용하여 현재 소득 수준에 대한 포토폴리오 자료, 소득 수준이 10% 상승되었을 때, 20% 상승되었을 때에 대한 미래 예측 자료를 함께 제출하라.
-- 추가적인 질문을 요구하는 문장은 제외하라.
-- -- 등으로 불필요한 줄나눔은 없게 하라.
-"""
-    return (await ask_gpt(prompt, max_tokens=2500)).strip()
-
-# -----------------------
-# QA 에이전트 (요약 기반)
-# -----------------------
-async def tax_on_document(document: str, question: str) -> str:
-    prompt = f"""
-다음은 문서 본문이다. 이 문서 내의 정보만 사용하여 질문에 답해라.
-
-본문:
-{document}
-
-질문:
-{question}
-
-규칙:
-- 주어진 문서 본문의 자료를 토대로 질문에 답변하라.
-- 추가적인 질문을 요구하는 문장은 제외하라.
-- -- 등으로 불필요한 줄나눔은 없게 하라.
-"""
-    return (await ask_gpt(prompt, max_tokens=2500)).strip()
 # -----------------------
 # API 엔드포인트
 # -----------------------
@@ -168,7 +106,11 @@ async def analyze_document(
                                       "건강보험료: 12123123"
                                       "직불카드 등: 123123123"
                                       "급여: 123123"
-                                      "상여: 123123")
+                                      "상여: 123123",
+                                      "추론하지 말고 문서 내에서만 답을 찾아라."
+                                      "없으면 문서에 해당 정보 없음 이라고 답해라."
+                                      "문서 내에 있는 모든 정보를 찾아라."
+        )
 
         pattern = re.compile(r'([가-힣\w\s]+)\s*:\s*([\d,]+)')
         
@@ -264,10 +206,15 @@ async def analyze_document(session_id: str = Depends(get_current_user)):
 
         data_str = ", ".join(pairs)
 
-        answer = await assets_on_document(data_str,
+        answer = await qa_on_document(data_str,
                                       "현재 내 소득/지출 자료야. 이 자료를 토대로 앞으로의 내 미래 자산에 대한 재무 컨설팅을 듣고 싶어. "
                                       "어떤 방식으로 자산을 분배하면 좋을지, 세액을 줄이는 방법은 있을지. 현재의 소득수준이 10%증가했을 때, 20% 증가했을 때를 대비한 미래 예측 시뮬레이션도 있으면 좋겠어. "
-                                      "참고 자료는 한국의 비슷한 소득 수준을 가진 사람들에 대한 재무 데이터를 통해서 진행해줘")
+                                      "참고 자료는 한국의 비슷한 소득 수준을 가진 사람들에 대한 재무 데이터를 통해서 진행해줘",
+                                       "주어진 문서 본문의 자료를 토대로 한국의 비슷한 소득수준의 재무정보를 분석하여 가이드가 될 수 있는 포토폴리오 자료를 제출하라."
+                                       "웹 검색을 사용하여 현재 소득 수준에 대한 포토폴리오 자료, 소득 수준이 10% 상승되었을 때, 20% 상승되었을 때에 대한 미래 예측 자료를 함께 제출하라."
+                                       "추가적인 질문을 요구하는 문장은 제외하라."
+                                       "-- 등으로 불필요한 줄나눔은 없게 하라."
+                                      )
 
         return answer
     except Exception as e:
@@ -299,7 +246,7 @@ async def analyze_document(session_id: str = Depends(get_current_user)):
 
         data_str = ", ".join(pairs)
 
-        answer = await tax_on_document(data_str,
+        answer = await qa_on_document(data_str,
                                       "주어진 문서 본문을 바탕으로 내가 올린 자료 중 한국의 연말정산 소득공제 항목 중 받을 수 있는 혜택이 남아있다면 그 공제 가능 금액이 큰 순서대로 나열해줘. "
                                       "이 때 해당 세액공제 방법에 대한 간략한 설명을 100자 이내로 첨부해줘. 소득공제 가능 항목은 연말정산 홈텍스 시스템의 자료를 참조해. "
                                       "가능한 세액공제 항목은 다음과 같아. "
@@ -320,8 +267,11 @@ async def analyze_document(session_id: str = Depends(get_current_user)):
                                       "(EX; 본문 자료의 연금자료 세액공제 = 1,000,000 일 경우 5,000,000)"
                                       "주어진 문서 본문의 항목과 내가 제시한 10가지 항목이 일치하지 않아도 유사도로 0.9 이상이라면 표기해 "
                                       "EX) 혼인 세액공제 = 결혼세액공제"
-                                      "참고할 사이트는 https://www.nts.go.kr/nts/cm/cntnts/cntntsView.do?mi=6596&cntntsId=7875 국세청 공식 사이트야"
-                                       )
+                                      "참고할 사이트는 https://www.nts.go.kr/nts/cm/cntnts/cntntsView.do?mi=6596&cntntsId=7875 국세청 공식 사이트야",
+                                       "주어진 문서 본문의 자료를 토대로 질문에 답변하라."
+                                       "추가적인 질문을 요구하는 문장은 제외하라."
+                                       "-- 등으로 불필요한 줄나눔은 없게 하라."
+                                      )
 
         return answer
     except Exception as e:
@@ -353,11 +303,14 @@ async def analyze_document(session_id: str = Depends(get_current_user)):
 
         data_str = ", ".join(pairs)
 
-        answer = await tax_on_document(data_str,
+        answer = await qa_on_document(data_str,
                                        "주어진 문서 본문을 활용하여 연말정산에서 받을 수 있는 총 공제 예상 금액을 산출해줘. "
                                        "이 때 내가 받을 수 있는 총 공제 예상 금액을 먼저 산출해서 보여주고, "
                                        "앞으로 받을 수 있는 추가적인 공제내역이 있다면 해당 항목에 대한 간결한 설명과 함께 알려줘."
-                                       "참고할 사이트는 https://www.nts.go.kr/nts/cm/cntnts/cntntsView.do?mi=6596&cntntsId=7875 국세청 공식 사이트야"
+                                       "참고할 사이트는 https://www.nts.go.kr/nts/cm/cntnts/cntntsView.do?mi=6596&cntntsId=7875 국세청 공식 사이트야",
+                                      "주어진 문서 본문의 자료를 토대로 질문에 답변하라."
+                                      "추가적인 질문을 요구하는 문장은 제외하라."
+                                      "-- 등으로 불필요한 줄나눔은 없게 하라."
                                        )
 
         return answer
