@@ -52,8 +52,6 @@ class Log:
         cls._logger = logger
         return logger
 
-    import time
-
     def logging_decorator(self, func):
         if inspect.iscoroutinefunction(func):  # async 함수 처리
             @functools.wraps(func)
